@@ -4,8 +4,8 @@ export async function POST(request: NextRequest) {
   try {
     // GitHub Personal Access Token이 필요합니다
     const githubToken = process.env.GITHUB_TOKEN;
-    const owner = process.env.GITHUB_OWNER; // 예: "your-username"
-    const repo = process.env.GITHUB_REPO;   // 예: "your-repo-name"
+    const owner = process.env.GITHUB_OWNER; // "tyee03"
+    const repo = process.env.GITHUB_REPO;   // "project5"
     
     if (!githubToken || !owner || !repo) {
       return NextResponse.json(
