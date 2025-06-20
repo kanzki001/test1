@@ -3,13 +3,13 @@ name: Run Forecast Daily
 on:
   schedule:
     - cron: '0 0 * * *'  # 매일 오전 9시 (KST)
-  workflow_dispatch:
+  workflow_dispatch:  # 수동 트리거 활성화
 
 jobs:
   run-forecast:
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Repository Checkout
+      - name: 🏗️ Repository Checkout
         uses: actions/checkout@v3
 
       - name: 🐍 Set up Python
@@ -28,5 +28,3 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-
-
