@@ -2,15 +2,15 @@
 
 import * as React from "react"
 import { Check, ChevronsUpDown, Calendar as CalendarIcon } from "lucide-react"
-import { format, subMonths, addYears } from "date-fns" // subMonths, addYears 추가
-import { DateRange } from "react-day-picker" // DateRange 타입 명시적 임포트
+import { format, subMonths, addYears } from "date-fns"
+import { DateRange } from "react-day-picker"
 import {
   Area,
   AreaChart,
   CartesianGrid,
   XAxis,
   YAxis,
-  Tooltip,
+  ResponsiveContainer,
 } from "recharts"
 
 import { cn } from "@/lib/utils"
@@ -20,14 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  type ChartConfig,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart"
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart"
 
 // --- API 응답 및 데이터 타입 정의 ---
 export type Forecast = {
@@ -48,20 +41,17 @@ export type Company = {
 
 // --- 차트 설정 ---
 const chartConfig = {
-  predictedQuantity: { label: "예측 수량 (월별)", color: "hsl(var(--chart-1))" },
-  actualSalesMonthly: { label: "실제 수량 (월별)", color: "hsl(var(--chart-2))" },
-} satisfies ChartConfig
+  predictedQuantity: { 
+    label: "예측 수량 (월별)", 
+    color: "hsl(var(--primary))" 
+  },
+  actualSalesMonthly: { 
+    label: "실제 수량 (월별)", 
+    color: "hsl(var(--chart-2))" 
+  },
+}
 
 // --- 메인 차트 컴포넌트 ---
-
-/**
- * 주문량 예측 및 실제 데이터를 비교하는 차트 컴포넌트
- * @param allCompanies - 전체 회사 목록
- * @param selectedCompanyId - 현재 선택된 회사 ID
- * @param onCompanyChange - 회사 선택 시 호출될 콜백 함수
- * @param forecastData - 예측 데이터 배열
- * @param actualSalesData - 실제 매출 데이터 배열 (일별)
- */
 export function ForecastChart({
   allCompanies,
   selectedCompanyId,
@@ -135,7 +125,7 @@ export function ForecastChart({
     setPeriod(value);
     const today = new Date();
     let from: Date | undefined;
-    let to: Date | undefined = addYears(today, 5); // 예측은 미래까지 있을 수 있으므로 넉넉하게 설정
+    let to: Date | undefined = addYears(today, 5);
 
     switch (value) {
       case "6months":
@@ -162,95 +152,137 @@ export function ForecastChart({
   }, []);
 
   return (
-    <Card className="@container">
-      <CardHeader className="flex-col items-start gap-4 @md:flex-row @md:items-center">
-        <div className="flex-1">
-          <CardTitle>주문량 예측 추이 (월별 비교)</CardTitle>
-          <CardDescription>
+    <Card className="w-full">
+      <CardHeader className="space-y-4">
+        <div>
+          <CardTitle className="text-xl md:text-2xl">주문량 예측 추이 (월별 비교)</CardTitle>
+          <CardDescription className="text-sm md:text-base mt-2">
             선택된 회사의 월별 주문 예측 및 실제 수량 추이입니다.
           </CardDescription>
         </div>
-        <div className="flex w-full flex-col gap-2 @md:ml-auto @md:w-auto @md:flex-row">
-          <Select value={period} onValueChange={handlePeriodChange}>
-            <SelectTrigger className="w-full @md:w-[150px]">
-              <SelectValue placeholder="기간 선택" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">전체 기간</SelectItem>
-              <SelectItem value="6months">최근 6개월</SelectItem>
-              <SelectItem value="12months">최근 12개월</SelectItem>
-              <SelectItem value="24months">최근 24개월</SelectItem>
-            </SelectContent>
-          </Select>
+        
+        {/* 반응형 컨트롤 섹션 */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap lg:flex-nowrap">
+          {/* 기간 선택 */}
+          <div className="w-full sm:w-auto">
+            <Select value={period} onValueChange={handlePeriodChange}>
+              <SelectTrigger className="w-full sm:w-[150px]">
+                <SelectValue placeholder="기간 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 기간</SelectItem>
+                <SelectItem value="6months">최근 6개월</SelectItem>
+                <SelectItem value="12months">최근 12개월</SelectItem>
+                <SelectItem value="24months">최근 24개월</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-          <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+          {/* 날짜 범위 선택 */}
+          <div className="w-full sm:w-auto">
+            <DateRangePicker 
+              date={dateRange} 
+              onDateChange={setDateRange}
+              className="w-full sm:w-auto"
+            />
+          </div>
 
-          <CompanySearchCombobox
-            companies={allCompanies}
-            value={selectedCompanyId}
-            onSelect={onCompanyChange}
-          />
+          {/* 회사 선택 */}
+          <div className="w-full sm:w-auto lg:ml-auto">
+            <CompanySearchCombobox
+              companies={allCompanies}
+              value={selectedCompanyId}
+              onSelect={onCompanyChange}
+            />
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
-        <ChartContainer config={chartConfig} className="aspect-auto h-[250px] w-full">
-          <AreaChart data={filteredChartData}>
-            <defs>
-              <linearGradient id="fillPredicted" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="var(--color-predictedQuantity)" stopOpacity={0.8} />
-                <stop offset="95%" stopColor="var(--color-predictedQuantity)" stopOpacity={0.1} />
-              </linearGradient>
-              <linearGradient id="fillActual" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="var(--color-actualSalesMonthly)" stopOpacity={0.8} />
-                <stop offset="95%" stopColor="var(--color-actualSalesMonthly)" stopOpacity={0.1} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid vertical={false} />
-            <XAxis
-              dataKey="date"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              minTickGap={32}
-              tickFormatter={(value) => format(new Date(value), "yy-MM")}
-            />
-            <YAxis
-              tickFormatter={(value) => value.toLocaleString()}
-            />
-            <ChartTooltip
-              cursor={false}
-              content={
-                <ChartTooltipContent
-                  labelFormatter={(label) => format(new Date(label), "yyyy년 MM월")}
-                  indicator="dot"
-                  formatter={(value) => `${Number(value).toLocaleString()} 개`} // ❗단위 수정: 원 -> 개
-                />
-              }
-            />
-            {/* 🔥 간결해진 범례(Legend) 코드 */}
-            <ChartLegend content={<ChartLegendContent />} />
-            
-            <Area
-              dataKey="predictedQuantity"
-              type="natural"
-              fill="url(#fillPredicted)"
-              stroke="var(--color-predictedQuantity)"
-              name={chartConfig.predictedQuantity.label} // name prop 추가
-            />
-            <Area
-              dataKey="actualSalesMonthly"
-              type="natural"
-              fill="url(#fillActual)"
-              stroke="var(--color-actualSalesMonthly)"
-              name={chartConfig.actualSalesMonthly.label} // name prop 추가
-            />
-          </AreaChart>
-        </ChartContainer>
+
+      <CardContent className="p-4 md:p-6">
+        <div className="h-[300px] md:h-[400px] lg:h-[500px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={filteredChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <defs>
+                <linearGradient id="fillPredicted" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8} />
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.1} />
+                </linearGradient>
+                <linearGradient id="fillActual" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.8} />
+                  <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0.1} />
+                </linearGradient>
+              </defs>
+              
+              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+              
+              <XAxis
+                dataKey="date"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12 }}
+                tickFormatter={(value) => format(new Date(value), "yy-MM")}
+                interval="preserveStartEnd"
+              />
+              
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12 }}
+                tickFormatter={(value) => value.toLocaleString()}
+              />
+              
+              <ChartTooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  
+                  return (
+                    <div className="rounded-lg border bg-background p-3 shadow-md">
+                      <p className="font-medium text-sm">
+                        {format(new Date(label), "yyyy년 MM월")}
+                      </p>
+                      {payload.map((entry, index) => (
+                        <div key={index} className="flex items-center gap-2 text-sm">
+                          <div 
+                            className="h-2 w-2 rounded-full" 
+                            style={{ backgroundColor: entry.color }}
+                          />
+                          <span>{entry.name}: </span>
+                          <span className="font-medium">
+                            {Number(entry.value).toLocaleString()} 개
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }}
+              />
+              
+              <Area
+                type="monotone"
+                dataKey="predictedQuantity"
+                stackId="1"
+                stroke="hsl(var(--primary))"
+                fill="url(#fillPredicted)"
+                strokeWidth={2}
+                name="예측 수량 (월별)"
+              />
+              
+              <Area
+                type="monotone"
+                dataKey="actualSalesMonthly"
+                stackId="2"
+                stroke="hsl(var(--chart-2))"
+                fill="url(#fillActual)"
+                strokeWidth={2}
+                name="실제 수량 (월별)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </CardContent>
     </Card>
   )
 }
-
 
 // --- 하위 컴포넌트들 ---
 
@@ -275,14 +307,21 @@ function CompanySearchCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" className="w-full justify-between @md:w-56">
-          <span className="truncate">{getDisplayValue(selectedCompany)}</span>
+        <Button 
+          variant="outline" 
+          role="combobox" 
+          aria-expanded={open}
+          className="w-full sm:w-[280px] justify-between"
+        >
+          <span className="truncate text-left">
+            {getDisplayValue(selectedCompany)}
+          </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
-          <CommandInput placeholder="회사명 또는 규모로 검색..." />
+          <CommandInput placeholder="회사명 또는 규모로 검색..." className="h-9" />
           <CommandList>
             <CommandEmpty>검색 결과가 없습니다.</CommandEmpty>
             <CommandGroup>
@@ -294,9 +333,15 @@ function CompanySearchCombobox({
                     onSelect(String(company.customerId))
                     setOpen(false)
                   }}
+                  className="cursor-pointer"
                 >
-                  <Check className={cn("mr-2 h-4 w-4", value === String(company.customerId) ? "opacity-100" : "opacity-0")} />
-                  <span>{getDisplayValue(company)}</span>
+                  <Check 
+                    className={cn(
+                      "mr-2 h-4 w-4", 
+                      value === String(company.customerId) ? "opacity-100" : "opacity-0"
+                    )} 
+                  />
+                  <span className="truncate">{getDisplayValue(company)}</span>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -320,25 +365,32 @@ function DateRangePicker({
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          variant={"outline"}
+          variant="outline"
           className={cn(
-            "w-full justify-start text-left font-normal @md:w-[280px]",
+            "justify-start text-left font-normal",
             !date && "text-muted-foreground",
             className
           )}
         >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {date?.from ? (
-            date.to ? (
-              <>
-                {format(date.from, "yyyy/MM/dd")} - {format(date.to, "yyyy/MM/dd")}
-              </>
+          <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+          <span className="truncate">
+            {date?.from ? (
+              date.to ? (
+                <>
+                  <span className="hidden sm:inline">
+                    {format(date.from, "yyyy/MM/dd")} - {format(date.to, "yyyy/MM/dd")}
+                  </span>
+                  <span className="sm:hidden">
+                    {format(date.from, "MM/dd")} - {format(date.to, "MM/dd")}
+                  </span>
+                </>
+              ) : (
+                format(date.from, "yyyy/MM/dd")
+              )
             ) : (
-              format(date.from, "yyyy/MM/dd")
-            )
-          ) : (
-            <span>날짜 범위 선택</span>
-          )}
+              <span>날짜 범위 선택</span>
+            )}
+          </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
@@ -349,6 +401,7 @@ function DateRangePicker({
           selected={date}
           onSelect={onDateChange}
           numberOfMonths={2}
+          className="rounded-md border"
         />
       </PopoverContent>
     </Popover>
