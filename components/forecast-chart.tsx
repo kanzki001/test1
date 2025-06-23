@@ -45,9 +45,9 @@ const subMonths = (date: Date, months: number) => {
   return result;
 };
 
-const addYears = (date: Date, years: number) => {
+const addMonths = (date: Date, months: number) => {
   const result = new Date(date);
-  result.setFullYear(result.getFullYear() + years);
+  result.setMonth(result.getMonth() + months);
   return result;
 };
 
@@ -72,6 +72,17 @@ export type Company = {
   companySize: string | null;
 };
 
+// 회사 규모 타입 정의
+export type CompanySize = "all" | "대기업" | "중견기업" | "중소기업";
+
+// 회사 규모 옵션
+const COMPANY_SIZE_OPTIONS = [
+  { value: "all" as const, label: "전체" },
+  { value: "대기업" as const, label: "대기업" },
+  { value: "중견기업" as const, label: "중견기업" },
+  { value: "중소기업" as const, label: "중소기업" },
+];
+
 // --- 메인 차트 컴포넌트 ---
 export function ForecastChart({
   allCompanies = [],
@@ -80,8 +91,10 @@ export function ForecastChart({
   forecastData = [],
   actualSalesData = [],
   mapeValue = 0,
-  sizeFilter,
-  onSizeFilterChange
+  sizeFilter = "all",
+  onSizeFilterChange = () => {},
+  chartType = "size",
+  onChartTypeChange = () => {}
 }: {
   allCompanies?: Company[];
   selectedCompanyId?: string | null;
@@ -89,12 +102,13 @@ export function ForecastChart({
   forecastData?: Forecast[];
   actualSalesData?: ActualSales[];
   mapeValue?: number;
-  sizeFilter?: string;
-  onSizeFilterChange?: (value: string) => void;
+  sizeFilter?: CompanySize;
+  onSizeFilterChange?: (value: CompanySize) => void;
+  chartType?: "size" | "company";
+  onChartTypeChange?: (value: "size" | "company") => void;
 }) {
   const [dateRange, setDateRange] = React.useState<{ from?: Date; to?: Date }>({});
   const [period, setPeriod] = React.useState("12months");
-  const [chartType, setChartType] = React.useState("area");
   const [showActual, setShowActual] = React.useState(true);
   const [showForecast, setShowForecast] = React.useState(true);
 
@@ -156,12 +170,26 @@ export function ForecastChart({
     setPeriod(value);
     const today = new Date();
     let from: Date | undefined = undefined;
-    let to: Date | undefined = addYears(today, 5);
+    let to: Date | undefined = undefined;
+    
     switch (value) {
-      case "6months": from = subMonths(today, 6); break;
-      case "12months": from = subMonths(today, 12); break;
-      case "24months": from = subMonths(today, 24); break;
-      case "all": default: from = undefined; to = undefined; break;
+      case "6months": 
+        from = subMonths(today, 6); 
+        to = addMonths(today, 6);
+        break;
+      case "12months": 
+        from = subMonths(today, 12); 
+        to = addMonths(today, 12);
+        break;
+      case "24months": 
+        from = subMonths(today, 24); 
+        to = addMonths(today, 24);
+        break;
+      case "all": 
+      default: 
+        from = undefined; 
+        to = undefined; 
+        break;
     }
     setDateRange({ from, to });
   };
@@ -171,6 +199,17 @@ export function ForecastChart({
   }, []);
 
   const selectedCompany = allCompanies.find(c => String(c.customerId) === selectedCompanyId);
+
+  // 규모별 회사 수 계산 (전체 데이터 기준으로 계산)
+  const companySizeStats = React.useMemo(() => {
+    const stats = {
+      all: allCompanies.filter(c => c.customerId !== "all").length, // "전체 회사" 제외
+      대기업: allCompanies.filter(c => c.companySize === "대기업").length,
+      중견기업: allCompanies.filter(c => c.companySize === "중견기업").length,
+      중소기업: allCompanies.filter(c => c.companySize === "중소기업").length,
+    };
+    return stats;
+  }, [allCompanies]);
 
   const renderChart = () => {
     const chartData = filteredChartData.length > 0 ? filteredChartData : [{ date: new Date().toISOString().split('T')[0], predictedQuantity: 0, actualSalesMonthly: 0 }];
@@ -227,19 +266,31 @@ export function ForecastChart({
   return (
     <div className="w-full space-y-6">
       <div className="flex flex-col gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">주문량 예측 차트</h1>
-          <p className="text-gray-600 mt-2">회사별 주문 예측 및 실제 수량 분석</p>
-        </div>
-        {selectedCompany && (
+        {/* 선택된 필터에 따른 Alert 메시지 */}
+        {chartType === "size" ? (
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription className="text-base">
-              <strong>{selectedCompany.companyName || `Customer ${selectedCompany.customerId}`} {selectedCompany.companySize && `(${selectedCompany.companySize})`}</strong>의 데이터를 분석 중입니다.
+              <strong className="text-3xl font-bold">
+                {sizeFilter === "all" ? "전체 회사" : 
+                 sizeFilter === "대기업" ? "대기업" :
+                 sizeFilter === "중견기업" ? "중견기업" :
+                 sizeFilter === "중소기업" ? "중소기업" : "전체 회사"}
+              </strong>의 데이터를 분석 중입니다.
             </AlertDescription>
           </Alert>
+        ) : (
+          selectedCompany && (
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription className="text-base">
+                <strong className="text-3xl font-bold">{selectedCompany.companyName || `Customer ${selectedCompany.customerId}`} {selectedCompany.companySize && `(${selectedCompany.companySize})`}</strong>의 데이터를 분석 중입니다.
+              </AlertDescription>
+            </Alert>
+          )
         )}
       </div>
+      
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -289,6 +340,7 @@ export function ForecastChart({
           </CardContent>
         </Card>
       </div>
+
       <Card className="w-full">
         <CardHeader className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -297,12 +349,48 @@ export function ForecastChart({
               <CardDescription className="text-sm md:text-base mt-2">월별 매출 예측 및 실제 매출 비교 분석</CardDescription>
             </div>
           </div>
-          <Tabs value={chartType} onValueChange={setChartType}>
-            <TabsList>
-              <TabsTrigger value="area">Area Chart</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          
           <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap lg:flex-nowrap">
+            {/* 규모별/회사별 탭 */}
+            <div className="w-full sm:w-auto">
+              <Tabs value={chartType} onValueChange={onChartTypeChange}>
+                <TabsList>
+                  <TabsTrigger value="size">규모별</TabsTrigger>
+                  <TabsTrigger value="company">회사별</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
+            {/* 조건부 필터 렌더링 */}
+            {chartType === "size" ? (
+              /* 규모별 필터 */
+              <div className="w-full sm:w-auto">
+                <Select value={sizeFilter} onValueChange={onSizeFilterChange}>
+                  <SelectTrigger className="w-full sm:w-[150px]">
+                    <SelectValue placeholder="규모 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMPANY_SIZE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        <div className="flex items-center justify-between w-full">
+                          <span>{option.label}</span>
+                          <Badge variant="secondary" className="ml-2 text-xs">
+                            {companySizeStats[option.value]}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              /* 회사별 선택 */
+              <div className="w-full sm:w-auto">
+                <CompanySearchCombobox companies={allCompanies} value={selectedCompanyId} onSelect={onCompanyChange} />
+              </div>
+            )}
+
+            {/* 기간 선택 */}
             <div className="w-full sm:w-auto">
               <Select value={period} onValueChange={handlePeriodChange}>
                 <SelectTrigger className="w-full sm:w-[150px]">
@@ -310,28 +398,30 @@ export function ForecastChart({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">전체 기간</SelectItem>
-                  <SelectItem value="6months">최근 6개월</SelectItem>
-                  <SelectItem value="12months">최근 12개월</SelectItem>
-                  <SelectItem value="24months">최근 24개월</SelectItem>
+                  <SelectItem value="6months">6개월</SelectItem>
+                  <SelectItem value="12months">12개월</SelectItem>
+                  <SelectItem value="24months">24개월</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* 날짜 범위 선택 */}
             <div className="w-full sm:w-auto">
               <DateRangePicker date={dateRange} onDateChange={setDateRange} className="w-full sm:w-auto" />
             </div>
+            
             <Separator orientation="vertical" className="hidden lg:block h-8" />
+            
+            {/* 차트 표시 옵션 */}
             <div className="flex items-center gap-4">
-              <div className="flex items-center space-x-2">
-                <Switch id="show-forecast" checked={showForecast} onCheckedChange={setShowForecast} />
-                <Label htmlFor="show-forecast" className="text-sm">예측 매출</Label>
-              </div>
               <div className="flex items-center space-x-2">
                 <Switch id="show-actual" checked={showActual} onCheckedChange={setShowActual} />
                 <Label htmlFor="show-actual" className="text-sm">실제 매출</Label>
               </div>
-            </div>
-            <div className="w-full sm:w-auto lg:ml-auto">
-              <CompanySearchCombobox companies={allCompanies} value={selectedCompanyId} onSelect={onCompanyChange} />
+              <div className="flex items-center space-x-2">
+                <Switch id="show-forecast" checked={showForecast} onCheckedChange={setShowForecast} />
+                <Label htmlFor="show-forecast" className="text-sm">예측 매출</Label>
+              </div>
             </div>
           </div>
         </CardHeader>
