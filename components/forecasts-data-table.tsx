@@ -61,7 +61,7 @@ export type Forecast = {
   predictedQuantity: number;
   mape: number | null;
   predictionModel: string;
-  probability: number | null; // ✨ 새로 추가
+  probability: number | null;
   forecastGenerationDate: string;
 };
 
@@ -110,11 +110,31 @@ const getCompanySizeBadgeColor = (size) => {
 };
 
 // 테이블 셀 뷰어 컴포넌트
-function ForecastTableCellViewer({ item, onSave }) {
+function ForecastTableCellViewer({ item, onSave, triggerRef }) {
   const displayName = item.companyName || item.customerName || `고객 ${item.customerId}`;
+  const [isOpen, setIsOpen] = React.useState(false);
+  
+  React.useImperativeHandle(triggerRef, () => ({
+    openSheet: () => setIsOpen(true)
+  }));
+
+  const handleSave = () => {
+    const form = document.getElementById(`edit-form-${item.cofId}`);
+    const formData = new FormData(form);
+    
+    const fakeEvent = {
+      preventDefault: () => {},
+      currentTarget: {
+        get: (name) => formData.get(name)
+      }
+    };
+    
+    onSave(fakeEvent, item.cofId);
+    setIsOpen(false);
+  };
   
   return (
-    <Sheet>
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
         <Button variant="link" className="w-fit px-0 text-left text-foreground">
           {displayName}
@@ -136,7 +156,7 @@ function ForecastTableCellViewer({ item, onSave }) {
             </div>
           </div>
           <Separator />
-          <div className="flex flex-col gap-4">
+          <form id={`edit-form-${item.cofId}`} className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-3">
                 <Label htmlFor="predictedDate">예측 날짜</Label>
@@ -204,36 +224,12 @@ function ForecastTableCellViewer({ item, onSave }) {
               <Label htmlFor="companyName">회사명</Label>
               <Input id="companyName" defaultValue={displayName} disabled className="bg-muted" />
             </div>
-          </div>
+          </form>
         </div>
         <SheetFooter className="mt-auto flex gap-2 sm:flex-col sm:space-x-0">
           <Button 
             className="w-full"
-            onClick={(e) => {
-              const container = e.target.closest('.flex.flex-col');
-              const predictedDate = container.querySelector('#predictedDate').value;
-              const predictedQuantity = container.querySelector('#predictedQuantity').value;
-              const mape = container.querySelector('#mape').value;
-              const probability = container.querySelector('#probability').value;
-              const predictionModel = container.querySelector('#predictionModel').value;
-              
-              const fakeEvent = {
-                preventDefault: () => {},
-                currentTarget: {
-                  get: (name) => {
-                    switch(name) {
-                      case 'predictedDate': return predictedDate;
-                      case 'predictedQuantity': return predictedQuantity;
-                      case 'mape': return mape;
-                      case 'probability': return probability;
-                      case 'predictionModel': return predictionModel;
-                      default: return '';
-                    }
-                  }
-                }
-              };
-              onSave(fakeEvent, item.cofId);
-            }}
+            onClick={handleSave}
           >
             변경사항 저장
           </Button>
@@ -248,8 +244,15 @@ function ForecastTableCellViewer({ item, onSave }) {
   )
 }
 
-function DraggableRow({ row, onEdit, onDelete }) {
+function DraggableRow({ row, onEdit, onDelete, columnVisibility }) {
   const displayName = row.original.companyName || row.original.customerName || `고객 ${row.original.customerId}`;
+  const sheetTriggerRef = React.useRef();
+  
+  const handleEditClick = () => {
+    if (sheetTriggerRef.current) {
+      sheetTriggerRef.current.openSheet();
+    }
+  };
   
   return (
     <tr
@@ -272,7 +275,11 @@ function DraggableRow({ row, onEdit, onDelete }) {
       </td>
       <td className="p-4">
         <div className="text-center">
-          <ForecastTableCellViewer item={row.original} onSave={onEdit} />
+          <ForecastTableCellViewer 
+            item={row.original} 
+            onSave={onEdit} 
+            triggerRef={sheetTriggerRef}
+          />
         </div>
       </td>
       <td className="p-4">
@@ -285,48 +292,56 @@ function DraggableRow({ row, onEdit, onDelete }) {
           {new Intl.NumberFormat('ko-KR').format(row.original.predictedQuantity)}
         </div>
       </td>
-      <td className="p-4">
-        <div className="flex justify-center">
-          {typeof row.original.mape === 'number' && !isNaN(row.original.mape) ? (
-            <Badge variant={row.original.mape < 0.1 ? "default" : row.original.mape < 0.25 ? "secondary" : "destructive"}>
-              {(row.original.mape * 100).toFixed(1)}%
-            </Badge>
-          ) : (
-            <Badge variant="secondary">N/A</Badge>
-          )}
-        </div>
-      </td>
-      <td className="p-4">
-        <div className="flex justify-center">
-          {row.original.companySize ? (
-            <Badge variant="outline" className={`px-1.5 text-muted-foreground ${getCompanySizeBadgeColor(row.original.companySize)}`}>
-              {row.original.companySize}
-            </Badge>
-          ) : (
-            <Badge variant="secondary" className="px-1.5 text-muted-foreground">
-              N/A
-            </Badge>
-          )}
-        </div>
-      </td>
-      <td className="p-4">
-        <div className="flex justify-center">
-          {row.original.predictionModel ? (
-            <Badge variant={getModelBadgeVariant(row.original.predictionModel)} className="px-1.5 text-muted-foreground">
-              {row.original.predictionModel}
-            </Badge>
-          ) : (
-            <Badge variant="secondary" className="px-1.5 text-muted-foreground">
-              N/A
-            </Badge>
-          )}
-        </div>
-      </td>
-      <td className="p-4">
-        <div className="text-center font-mono text-sm text-muted-foreground">
-          {row.original.forecastGenerationDate && new Date(row.original.forecastGenerationDate).toLocaleDateString("ko-KR")}
-        </div>
-      </td>
+      {columnVisibility.mape && (
+        <td className="p-4">
+          <div className="flex justify-center">
+            {typeof row.original.mape === 'number' && !isNaN(row.original.mape) ? (
+              <Badge variant={row.original.mape < 0.1 ? "default" : row.original.mape < 0.25 ? "secondary" : "destructive"}>
+                {(row.original.mape * 100).toFixed(1)}%
+              </Badge>
+            ) : (
+              <Badge variant="secondary">N/A</Badge>
+            )}
+          </div>
+        </td>
+      )}
+      {columnVisibility.companySize && (
+        <td className="p-4">
+          <div className="flex justify-center">
+            {row.original.companySize ? (
+              <Badge variant="outline" className={`px-1.5 text-muted-foreground ${getCompanySizeBadgeColor(row.original.companySize)}`}>
+                {row.original.companySize}
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="px-1.5 text-muted-foreground">
+                N/A
+              </Badge>
+            )}
+          </div>
+        </td>
+      )}
+      {columnVisibility.predictionModel && (
+        <td className="p-4">
+          <div className="flex justify-center">
+            {row.original.predictionModel ? (
+              <Badge variant={getModelBadgeVariant(row.original.predictionModel)} className="px-1.5 text-muted-foreground">
+                {row.original.predictionModel}
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="px-1.5 text-muted-foreground">
+                N/A
+              </Badge>
+            )}
+          </div>
+        </td>
+      )}
+      {columnVisibility.forecastGenerationDate && (
+        <td className="p-4">
+          <div className="text-center font-mono text-sm text-muted-foreground">
+            {row.original.forecastGenerationDate && new Date(row.original.forecastGenerationDate).toLocaleDateString("ko-KR")}
+          </div>
+        </td>
+      )}
       <td className="p-4">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -336,7 +351,7 @@ function DraggableRow({ row, onEdit, onDelete }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-32">
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={handleEditClick}>
               <Edit className="mr-2 h-4 w-4" />
               수정
             </DropdownMenuItem>
@@ -499,6 +514,9 @@ export function DataTable({
 
   const selectedCount = Object.values(rowSelection).filter(Boolean).length;
 
+  // 표시될 컬럼 수 계산 (기본 컬럼 5개 + 조건부 컬럼들 + 액션 컬럼 1개)
+  const totalColumns = 6 + Object.values(columnVisibility).filter(Boolean).length;
+
   return (
     <div className="flex w-full flex-col justify-start gap-6">
       <div className="flex items-center justify-between px-4 lg:px-6">
@@ -617,11 +635,12 @@ export function DataTable({
                     }}
                     onEdit={handleSaveChanges}
                     onDelete={handleDeleteRow}
+                    columnVisibility={columnVisibility}
                   />
                 ))
               ) : (
                 <tr>
-                  <td colSpan={10} className="h-24 text-center">
+                  <td colSpan={totalColumns} className="h-24 text-center">
                     No results.
                   </td>
                 </tr>
