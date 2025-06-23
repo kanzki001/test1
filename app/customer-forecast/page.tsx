@@ -9,17 +9,33 @@ import { DataTable, type Forecast } from "@/components/forecasts-data-table"
 import { ForecastChart, type Company, type Forecast as ChartForecastType, type ActualSales as ChartActualSalesType } from "@/components/forecast-chart"
 import { PageHeader } from "@/components/page-header"
 
-// API 응답 타입과 동일하게 정의합니다.
-// Forecast와 ActualSales는 forecast-chart.tsx에서 이미 Export되어 있으므로 재정의하지 않습니다.
-// 단, Forecast는 Forecasts-data-table에서도 쓰이고 이름이 겹치므로,
-// ForecastChart에서 쓰는 Forecast와 ActualSales는 별칭을 부여하여 혼동을 피합니다.
-type ApiCustomerForecastResponse = { // API의 CustomerForecastResponse와 일치
+// API 타입을 직접 정의 (API 응답과 동일하게)
+type ForecastData = {
+  cofId: number;
   customerId: number;
   companyName: string | null;
   customerName: string | null;
   companySize: string | null;
-  forecasts: ChartForecastType[]; // ForecastChart에서 쓰는 Forecast 타입
-  actualSales: ChartActualSalesType[]; // ForecastChart에서 쓰는 ActualSales 타입
+  predictedDate: string;
+  predictedQuantity: number;
+  mape: number | null;
+  predictionModel: string;
+  probability: number | null;
+  forecastGenerationDate: string;
+};
+
+type ActualSalesData = {
+  date: string;
+  quantity: number;
+};
+
+type ApiCustomerForecastResponse = {
+  customerId: number;
+  companyName: string | null;
+  customerName: string | null;
+  companySize: string | null;
+  forecasts: ForecastData[];
+  actualSales: ActualSalesData[];
 };
 
 export default function CustomerForecastPage() {
@@ -133,27 +149,46 @@ export default function CustomerForecastPage() {
     setSelectedCompanyId("all");
   }, [sizeFilter]);
 
-
-  // ✨✨✨ ForecastChart에 전달할 데이터 계산 로직 대폭 수정 ✨✨✨
+  // ✨✨✨ ForecastChart에 전달할 데이터 계산 로직 - MAPE 포함 ✨✨✨
   const chartDataForDisplay = React.useMemo(() => {
     let forecastsToDisplay: ChartForecastType[] = [];
     let actualSalesToDisplay: ChartActualSalesType[] = [];
+    let mapeValue = 0;
 
     if (selectedCompanyId === "all") {
       // '전체 회사' 선택 시 모든 필터링된 회사의 데이터를 합산
       const combinedForecastsMap = new Map<string, number>(); // YYYY-MM-DD -> total predicted quantity
       const combinedActualSalesMap = new Map<string, number>(); // YYYY-MM-DD -> total actual sales revenue
+      let totalMape = 0;
+      let mapeCount = 0;
 
       filteredCompanies.forEach(company => {
+        // 각 회사의 MAPE 평균 계산
+        const validMapes = company.forecasts
+          .map(f => f.mape)
+          .filter((mape): mape is number => mape !== null && mape !== undefined);
+        
+        if (validMapes.length > 0) {
+          const companyMape = validMapes.reduce((sum, mape) => sum + mape, 0) / validMapes.length;
+          totalMape += companyMape;
+          mapeCount++;
+        }
+
+        // 예측 데이터 합산
         company.forecasts.forEach(forecast => {
           const dateKey = forecast.predictedDate.split('T')[0]; // YYYY-MM-DD
           combinedForecastsMap.set(dateKey, (combinedForecastsMap.get(dateKey) || 0) + forecast.predictedQuantity);
         });
+
+        // 실제 매출 데이터 합산
         company.actualSales.forEach(sale => {
           const dateKey = sale.date; // YYYY-MM-DD
           combinedActualSalesMap.set(dateKey, (combinedActualSalesMap.get(dateKey) || 0) + sale.quantity);
         });
       });
+
+      // 전체 평균 MAPE 계산
+      mapeValue = mapeCount > 0 ? totalMape / mapeCount : 0;
 
       // Map을 Forecast 타입과 ActualSales 타입 배열로 변환
       forecastsToDisplay = Array.from(combinedForecastsMap.entries())
@@ -168,24 +203,63 @@ export default function CustomerForecastPage() {
       // 특정 회사 선택 시 해당 회사의 데이터만 사용
       const company = filteredCompanies.find(c => String(c.customerId) === selectedCompanyId);
       if (company) {
-        forecastsToDisplay = company.forecasts;
+        // 예측 데이터 변환 (ForecastData -> ChartForecastType)
+        forecastsToDisplay = company.forecasts.map(f => ({
+          predictedDate: f.predictedDate,
+          predictedQuantity: f.predictedQuantity
+        }));
         actualSalesToDisplay = company.actualSales;
+
+        // 해당 회사의 평균 MAPE 계산
+        const validMapes = company.forecasts
+          .map(f => f.mape)
+          .filter((mape): mape is number => mape !== null && mape !== undefined);
+        
+        mapeValue = validMapes.length > 0 
+          ? validMapes.reduce((sum, mape) => sum + mape, 0) / validMapes.length 
+          : 0;
       }
     }
     
-    return { forecasts: forecastsToDisplay, actualSales: actualSalesToDisplay };
+    return { forecasts: forecastsToDisplay, actualSales: actualSalesToDisplay, mape: mapeValue };
   }, [selectedCompanyId, filteredCompanies]);
 
-
-  // 테이블 데이터 계산 시, 필터링된 회사 목록을 사용합니다.
+  // ✨✨✨ DataTable에 전달할 데이터 계산 로직 - 모든 필드 포함 ✨✨✨
   const tableData = React.useMemo<Forecast[]>(() => {
     if (selectedCompanyId === "all") {
       // '전체 회사' 선택 시 모든 회사의 예측 데이터를 플랫맵합니다.
-      return filteredCompanies.flatMap(company => company.forecasts)
-              .sort((a, b) => new Date(a.predictedDate).getTime() - new Date(b.predictedDate).getTime());
+      // ForecastData를 Forecast로 변환 (모든 필드 포함)
+      return filteredCompanies.flatMap(company => 
+        company.forecasts.map(f => ({
+          cofId: f.cofId,
+          customerId: f.customerId,
+          companyName: company.companyName || f.companyName,
+          customerName: company.customerName || f.customerName,
+          companySize: company.companySize || f.companySize,
+          predictedDate: f.predictedDate,
+          predictedQuantity: f.predictedQuantity,
+          mape: f.mape,
+          predictionModel: f.predictionModel,
+          probability: f.probability,
+          forecastGenerationDate: f.forecastGenerationDate
+        }))
+      ).sort((a, b) => new Date(a.predictedDate).getTime() - new Date(b.predictedDate).getTime());
     }
+    
     const company = filteredCompanies.find(c => String(c.customerId) === selectedCompanyId);
-    return company?.forecasts.sort((a, b) => new Date(a.predictedDate).getTime() - new Date(b.predictedDate).getTime()) || [];
+    return company?.forecasts.map(f => ({
+      cofId: f.cofId,
+      customerId: f.customerId,
+      companyName: company.companyName || f.companyName,
+      customerName: company.customerName || f.customerName,
+      companySize: company.companySize || f.companySize,
+      predictedDate: f.predictedDate,
+      predictedQuantity: f.predictedQuantity,
+      mape: f.mape,
+      predictionModel: f.predictionModel,
+      probability: f.probability,
+      forecastGenerationDate: f.forecastGenerationDate
+    })).sort((a, b) => new Date(a.predictedDate).getTime() - new Date(b.predictedDate).getTime()) || [];
   }, [selectedCompanyId, filteredCompanies]);
 
   const pageTitle = "고객 주문 예측";
@@ -237,10 +311,11 @@ export default function CustomerForecastPage() {
             onCompanyChange={setSelectedCompanyId}
             forecastData={chartDataForDisplay.forecasts}
             actualSalesData={chartDataForDisplay.actualSales}
+            mapeValue={chartDataForDisplay.mape}
             sizeFilter={sizeFilter}
             onSizeFilterChange={setSizeFilter}
           />
-          {/* ✨ DataTable에 onRunForecast와 isForecasting props 추가 */}
+          {/* ✨ DataTable에 완전한 데이터와 props 전달 */}
           <DataTable 
             data={tableData} 
             onRunForecast={handleRunForecast}
