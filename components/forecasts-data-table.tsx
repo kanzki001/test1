@@ -371,6 +371,7 @@ export function DataTable({
   data = [],
   onRunForecast = () => {},
   isForecasting = false,
+  selectedCompanyName = null,
 }) {
   const [tableData, setTableData] = React.useState(() => data);
   const [rowSelection, setRowSelection] = React.useState({});
@@ -442,19 +443,23 @@ export function DataTable({
   const handleExport = (format) => {
     const selectedData = Object.keys(rowSelection).length > 0 
       ? tableData.filter(item => rowSelection[item.cofId.toString()])
-      : paginatedData;
+      : tableData; // 전체 데이터 내보내기
 
     if (selectedData.length === 0) {
       alert("내보낼 데이터가 없습니다.");
       return;
     }
     
+    // 파일명에 회사명 추가
+    const companyNamePart = selectedCompanyName ? `_${selectedCompanyName.replace(/[^\w가-힣]/g, '_')}` : '';
+    const datePart = new Date().toISOString().slice(0, 10);
+    
     let blob;
     let fileName;
 
     if (format === 'json') {
       blob = new Blob([JSON.stringify(selectedData, null, 2)], { type: 'application/json' });
-      fileName = `forecast_export_${new Date().toISOString().slice(0, 10)}.json`;
+      fileName = `forecast_export${companyNamePart}_${datePart}.json`;
     } else {
       const headers = Object.keys(selectedData[0]);
       const csvContent = [
@@ -462,7 +467,7 @@ export function DataTable({
         ...selectedData.map(row => headers.map(header => JSON.stringify(row[header])).join(','))
       ].join('\n');
       blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
-      fileName = `forecast_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      fileName = `forecast_export${companyNamePart}_${datePart}.csv`;
     }
     
     const url = URL.createObjectURL(blob);
