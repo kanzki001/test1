@@ -65,6 +65,12 @@ export type Forecast = {
   forecastGenerationDate: string;
 };
 
+// 정렬 상태 타입
+type SortingState = {
+  key: string;
+  direction: 'asc' | 'desc' | null;
+};
+
 // Create a separate component for the drag handle
 function DragHandle({ id }) {
   return (
@@ -108,6 +114,45 @@ const getCompanySizeBadgeColor = (size) => {
       return "bg-gray-100 text-gray-800"
   }
 };
+
+// 정렬 가능한 헤더 컴포넌트
+function SortableHeader({ column, children, onSort, sortState }) {
+  const handleSort = () => {
+    let newDirection = 'asc';
+    if (sortState.key === column && sortState.direction === 'asc') {
+      newDirection = 'desc';
+    } else if (sortState.key === column && sortState.direction === 'desc') {
+      newDirection = null;
+    }
+    onSort(column, newDirection);
+  };
+
+  const getSortIcon = () => {
+    if (sortState.key !== column || !sortState.direction) {
+      return <ArrowUpDown className="ml-2 h-4 w-4" />;
+    }
+    return (
+      <ArrowUpDown 
+        className={`ml-2 h-4 w-4 ${
+          sortState.direction === 'asc' ? 'rotate-180' : ''
+        }`} 
+      />
+    );
+  };
+
+  return (
+    <div className="text-center">
+      <Button
+        variant="ghost"
+        onClick={handleSort}
+        className="h-8 px-2"
+      >
+        {children}
+        {getSortIcon()}
+      </Button>
+    </div>
+  );
+}
 
 // 테이블 셀 뷰어 컴포넌트
 function ForecastTableCellViewer({ item, onSave, triggerRef }) {
@@ -385,6 +430,61 @@ export function DataTable({
     pageIndex: 0,
     pageSize: 10,
   });
+  const [sortState, setSortState] = React.useState<SortingState>({
+    key: '',
+    direction: null
+  });
+
+  // 정렬 함수
+  const handleSort = (key: string, direction: 'asc' | 'desc' | null) => {
+    setSortState({ key, direction });
+    
+    if (!direction) {
+      // 정렬 해제 - 원본 순서로 복원
+      setTableData([...data]);
+      return;
+    }
+
+    const sortedData = [...tableData].sort((a, b) => {
+      let aValue = a[key];
+      let bValue = b[key];
+
+      // 회사명 특별 처리 (companyName 또는 customerName 사용)
+      if (key === 'companyName') {
+        aValue = a.companyName || a.customerName || `고객 ${a.customerId}`;
+        bValue = b.companyName || b.customerName || `고객 ${b.customerId}`;
+      }
+
+      // 날짜 필드 처리
+      if (key === 'predictedDate' || key === 'forecastGenerationDate') {
+        aValue = new Date(aValue).getTime();
+        bValue = new Date(bValue).getTime();
+      }
+      
+      // 숫자 필드 처리
+      if (key === 'predictedQuantity' || key === 'mape' || key === 'probability') {
+        aValue = Number(aValue) || 0;
+        bValue = Number(bValue) || 0;
+      }
+
+      // 문자열 필드 처리
+      if (typeof aValue === 'string') {
+        aValue = aValue?.toLowerCase() || '';
+        bValue = bValue?.toLowerCase() || '';
+      }
+
+      // null/undefined 처리
+      if (aValue == null && bValue == null) return 0;
+      if (aValue == null) return direction === 'asc' ? 1 : -1;
+      if (bValue == null) return direction === 'asc' ? -1 : 1;
+
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    setTableData(sortedData);
+  };
 
   const handleDeleteRow = async (cofId) => {
     if (!window.confirm(`정말로 ID ${cofId} 예측 데이터를 삭제하시겠습니까?`)) return;
@@ -484,6 +584,7 @@ export function DataTable({
     setTableData(data);
     setRowSelection({});
     setPagination(prev => ({ ...prev, pageIndex: 0 }));
+    setSortState({ key: '', direction: null }); // 정렬 상태도 초기화
   }, [data]);
 
   // 페이지네이션 계산
@@ -597,32 +698,74 @@ export function DataTable({
                   </div>
                 </th>
                 <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">
-                  회사명
+                  <SortableHeader 
+                    column="companyName" 
+                    onSort={handleSort} 
+                    sortState={sortState}
+                  >
+                    회사명
+                  </SortableHeader>
                 </th>
                 <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">
-                  예측일
+                  <SortableHeader 
+                    column="predictedDate" 
+                    onSort={handleSort} 
+                    sortState={sortState}
+                  >
+                    예측일
+                  </SortableHeader>
                 </th>
                 <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">
-                  예측수량
+                  <SortableHeader 
+                    column="predictedQuantity" 
+                    onSort={handleSort} 
+                    sortState={sortState}
+                  >
+                    예측수량
+                  </SortableHeader>
                 </th>
                 {columnVisibility.mape && (
                   <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">
-                    MAPE
+                    <SortableHeader 
+                      column="mape" 
+                      onSort={handleSort} 
+                      sortState={sortState}
+                    >
+                      MAPE
+                    </SortableHeader>
                   </th>
                 )}
                 {columnVisibility.companySize && (
                   <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">
-                    회사 규모
+                    <SortableHeader 
+                      column="companySize" 
+                      onSort={handleSort} 
+                      sortState={sortState}
+                    >
+                      회사 규모
+                    </SortableHeader>
                   </th>
                 )}
                 {columnVisibility.predictionModel && (
                   <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">
-                    예측 모델
+                    <SortableHeader 
+                      column="predictionModel" 
+                      onSort={handleSort} 
+                      sortState={sortState}
+                    >
+                      예측 모델
+                    </SortableHeader>
                   </th>
                 )}
                 {columnVisibility.forecastGenerationDate && (
                   <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">
-                    생성일
+                    <SortableHeader 
+                      column="forecastGenerationDate" 
+                      onSort={handleSort} 
+                      sortState={sortState}
+                    >
+                      생성일
+                    </SortableHeader>
                   </th>
                 )}
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground"></th>

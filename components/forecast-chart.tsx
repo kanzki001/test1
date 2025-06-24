@@ -117,6 +117,7 @@ export function ForecastChart({
   const [period, setPeriod] = React.useState("12months");
   const [showActual, setShowActual] = React.useState(true);
   const [showForecast, setShowForecast] = React.useState(true);
+  const [showAvgLines, setShowAvgLines] = React.useState(true);
 
   const monthlyActualSales = React.useMemo(() => {
     if (!actualSalesData || !Array.isArray(actualSalesData)) return [];
@@ -331,18 +332,15 @@ export function ForecastChart({
         <Legend 
           wrapperStyle={{ paddingTop: '20px' }}
           iconType="line"
+          formatter={(value, entry) => {
+            // 평균선들은 다른 스타일로 표시
+            if (value.includes('평균')) {
+              return <span style={{ color: entry.color }}>• • • {value}</span>;
+            }
+            return <span style={{ color: entry.color }}>━━ {value}</span>;
+          }}
         />
         
-        {showForecast && (
-          <Area
-            type="monotone"
-            dataKey="predictedQuantity"
-            stroke="#3b82f6"
-            fill="#3b82f6"
-            fillOpacity={0.3}
-            name="예측 매출"
-          />
-        )}
         {showActual && (
           <Area
             type="monotone"
@@ -355,7 +353,7 @@ export function ForecastChart({
         )}
         
         {/* 실제 매출 구간 평균선 */}
-        {showActual && (
+        {showActual && showAvgLines && (
           <Line
             type="monotone"
             dataKey="actualAvgLine"
@@ -368,8 +366,19 @@ export function ForecastChart({
           />
         )}
         
-        {/* 예측 매출 구간 평균선 */}
         {showForecast && (
+          <Area
+            type="monotone"
+            dataKey="predictedQuantity"
+            stroke="#3b82f6"
+            fill="#3b82f6"
+            fillOpacity={0.3}
+            name="예측 매출"
+          />
+        )}
+        
+        {/* 예측 매출 구간 평균선 */}
+        {showForecast && showAvgLines && (
           <Line
             type="monotone"
             dataKey="forecastAvgLine"
@@ -547,6 +556,10 @@ export function ForecastChart({
               <div className="flex items-center space-x-2">
                 <Switch id="show-forecast" checked={showForecast} onCheckedChange={setShowForecast} />
                 <Label htmlFor="show-forecast" className="text-sm">예측 매출</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch id="show-avg-lines" checked={showAvgLines} onCheckedChange={setShowAvgLines} />
+                <Label htmlFor="show-avg-lines" className="text-sm">평균선</Label>
               </div>
             </div>
           </div>
