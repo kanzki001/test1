@@ -10,6 +10,12 @@ import {
   Tooltip,
   ResponsiveContainer,
   Area,
+  ReferenceLine,
+  ReferenceArea,
+  Line,
+  LineChart,
+  ComposedChart,
+  Legend,
 } from "recharts"
 
 // shadcn/ui 컴포넌트 imports
@@ -182,37 +188,36 @@ export function ForecastChart({
   }, [combinedChartData, dateRange]);
 
   const stats = React.useMemo(() => {
-    // 선택된 기간 내의 데이터만 사용
-    const totalPredicted = filteredChartData.reduce((sum, item) => sum + (item.predictedQuantity || 0), 0);
-    const totalActual = filteredChartData.reduce((sum, item) => sum + (item.actualSalesMonthly || 0), 0);
+    // 실제 매출 데이터만으로 평균 계산
+    const actualData = filteredChartData.filter(item => item.actualSalesMonthly > 0);
+    const totalActual = actualData.reduce((sum, item) => sum + (item.actualSalesMonthly || 0), 0);
+    const avgActual = actualData.length > 0 ? Math.floor(totalActual / actualData.length) : 0;
     
-    // 선택된 기간에 따른 개월 수 계산
-    let targetMonths = filteredChartData.length || 1;
-    if (period !== "all") {
-      targetMonths = parseInt(period.replace('months', ''));
-    }
+    // 예측 매출 데이터만으로 평균 계산
+    const forecastData = filteredChartData.filter(item => item.predictedQuantity > 0);
+    const totalPredicted = forecastData.reduce((sum, item) => sum + (item.predictedQuantity || 0), 0);
+    const avgPredicted = forecastData.length > 0 ? Math.floor(totalPredicted / forecastData.length) : 0;
     
-    // 실제 매출: 선택된 기간 내 실제 데이터가 있는 개월 수
-    const actualDataCount = filteredChartData.filter(item => 
-      item.actualSalesMonthly !== undefined && item.actualSalesMonthly !== null
-    ).length || 1;
+    // 선형 회귀를 통한 트렌드 계산
+    const calculateLinearTrend = (data) => {
+      if (data.length < 2) return 0;
+      
+      const n = data.length;
+      const sumX = data.reduce((sum, _, i) => sum + i, 0);
+      const sumY = data.reduce((sum, item) => sum + item.predictedQuantity, 0);
+      const sumXY = data.reduce((sum, item, i) => sum + i * item.predictedQuantity, 0);
+      const sumX2 = data.reduce((sum, _, i) => sum + i * i, 0);
+      
+      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+      const avgY = sumY / n;
+      
+      return (slope / avgY) * 100; // 평균 대비 월별 증감률
+    };
     
-    // 예측 매출: 선택된 기간 내 예측 데이터가 0보다 큰 개월 수 (실제 예측이 있는 월만)
-    const predictedDataCount = filteredChartData.filter(item => 
-      item.predictedQuantity !== undefined && item.predictedQuantity !== null && item.predictedQuantity > 0
-    ).length || 1;
+    const trend = calculateLinearTrend(forecastData);
     
-    // 핵심: 선택한 기간과 실제 존재하는 데이터 개월 수 중 작은 값으로 나누기
-    const actualMonthsForAvg = period === "all" ? actualDataCount : Math.min(targetMonths, actualDataCount);
-    const predictedMonthsForAvg = period === "all" ? predictedDataCount : Math.min(targetMonths, predictedDataCount);
-    
-    const avgPredicted = Math.floor(totalPredicted / predictedMonthsForAvg);
-    const avgActual = Math.floor(totalActual / actualMonthsForAvg);
-    const validData = filteredChartData.filter(item => (item.predictedQuantity || 0) > 0);
-    const trend = validData.length > 1 ? 
-      ((validData[validData.length - 1].predictedQuantity - validData[0].predictedQuantity) / validData[0].predictedQuantity) * 100 : 0;
     return { avgPredicted, avgActual, mapeValue, trend };
-  }, [filteredChartData, mapeValue, period]);
+  }, [filteredChartData, mapeValue]);
 
   const handlePeriodChange = (value: string) => {
     setPeriod(value);
@@ -261,8 +266,43 @@ export function ForecastChart({
 
   const renderChart = () => {
     const chartData = filteredChartData.length > 0 ? filteredChartData : [{ date: new Date().toISOString().split('T')[0], predictedQuantity: 0, actualSalesMonthly: 0 }];
+    
+    // 실제 매출이 있는 구간 찾기
+    const actualDataPoints = chartData.filter(item => item.actualSalesMonthly > 0);
+    const actualStartDate = actualDataPoints.length > 0 ? actualDataPoints[0].date : null;
+    const actualEndDate = actualDataPoints.length > 0 ? actualDataPoints[actualDataPoints.length - 1].date : null;
+    
+    // 예측 매출이 있는 구간 찾기
+    const forecastDataPoints = chartData.filter(item => item.predictedQuantity > 0);
+    const forecastStartDate = forecastDataPoints.length > 0 ? forecastDataPoints[0].date : null;
+    const forecastEndDate = forecastDataPoints.length > 0 ? forecastDataPoints[forecastDataPoints.length - 1].date : null;
+    
+    // 실제 매출 구간의 평균 계산
+    const actualAvg = actualDataPoints.length > 0 ? 
+      actualDataPoints.reduce((sum, item) => sum + item.actualSalesMonthly, 0) / actualDataPoints.length : 0;
+    
+    // 예측 매출 구간의 평균 계산
+    const forecastAvg = forecastDataPoints.length > 0 ? 
+      forecastDataPoints.reduce((sum, item) => sum + item.predictedQuantity, 0) / forecastDataPoints.length : 0;
+    
+    // 구간별 평균선 데이터 생성
+    const chartDataWithAvg = chartData.map(item => ({
+      ...item,
+      actualAvgLine: (item.actualSalesMonthly > 0) ? actualAvg : null,
+      forecastAvgLine: (item.predictedQuantity > 0) ? forecastAvg : null,
+    }));
+    
+    // 콘솔 출력
+    console.log('=== 평균선 구간 정보 ===');
+    console.log('실제 매출 구간:', actualStartDate, '~', actualEndDate, '/ 평균:', actualAvg);
+    console.log('예측 매출 구간:', forecastStartDate, '~', forecastEndDate, '/ 평균:', forecastAvg);
+    console.log('실제 매출 데이터 개수:', actualDataPoints.length);
+    console.log('예측 매출 데이터 개수:', forecastDataPoints.length);
+    console.log('chartDataWithAvg 샘플:', chartDataWithAvg.slice(0, 3));
+    console.log('====================');
+    
     return (
-      <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+      <ComposedChart data={chartDataWithAvg} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
         <XAxis
           dataKey="date"
@@ -287,6 +327,12 @@ export function ForecastChart({
           formatter={(value: number) => value.toLocaleString()}
           labelFormatter={(label: string) => formatDate(new Date(label), "yyyy-MM-dd")}
         />
+        
+        <Legend 
+          wrapperStyle={{ paddingTop: '20px' }}
+          iconType="line"
+        />
+        
         {showForecast && (
           <Area
             type="monotone"
@@ -307,7 +353,35 @@ export function ForecastChart({
             name="실제 매출"
           />
         )}
-      </AreaChart>
+        
+        {/* 실제 매출 구간 평균선 */}
+        {showActual && (
+          <Line
+            type="monotone"
+            dataKey="actualAvgLine"
+            stroke="#10b981"
+            strokeDasharray="5 5"
+            strokeWidth={2}
+            dot={false}
+            connectNulls={false}
+            name="실제 매출 평균"
+          />
+        )}
+        
+        {/* 예측 매출 구간 평균선 */}
+        {showForecast && (
+          <Line
+            type="monotone"
+            dataKey="forecastAvgLine"
+            stroke="#3b82f6"
+            strokeDasharray="5 5"
+            strokeWidth={2}
+            dot={false}
+            connectNulls={false}
+            name="예측 매출 평균"
+          />
+        )}
+      </ComposedChart>
     );
   };
 
@@ -342,21 +416,21 @@ export function ForecastChart({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">월평균 예측 매출</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">월평균 실제 매출</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.avgPredicted.toLocaleString()}</div>
+            <div className="text-2xl font-bold" style={{ color: '#10b981' }}>{stats.avgActual.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">선택 기간 내</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">월평균 실제 매출</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">월평균 예측 매출</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.avgActual.toLocaleString()}</div>
+            <div className="text-2xl font-bold" style={{ color: '#3b82f6' }}>{stats.avgPredicted.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">선택 기간 내</p>
           </CardContent>
         </Card>
@@ -377,14 +451,14 @@ export function ForecastChart({
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">예측 트렌드</CardTitle>
+            <CardTitle className="text-sm font-medium">예측 증감 추세 (선형회귀)</CardTitle>
             {stats.trend >= 0 ? <TrendingUp className="h-4 w-4 text-green-600" /> : <TrendingDown className="h-4 w-4 text-red-600" />}
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${stats.trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {stats.trend >= 0 ? '+' : ''}{stats.trend.toFixed(1)}%
             </div>
-            <p className="text-xs text-muted-foreground">기간 대비 변화</p>
+            <p className="text-xs text-muted-foreground">월평균 증감률</p>
           </CardContent>
         </Card>
       </div>
