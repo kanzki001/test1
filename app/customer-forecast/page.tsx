@@ -45,6 +45,7 @@ export default function CustomerForecastPage() {
   const [selectedCompanyId, setSelectedCompanyId] = React.useState<string>("all");
   const [sizeFilter, setSizeFilter] = React.useState<CompanySize>("all");
   const [isForecasting, setIsForecasting] = React.useState(false);
+  const [periodDateRange, setPeriodDateRange] = React.useState<{ from?: Date; to?: Date }>({});
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true);
@@ -104,6 +105,31 @@ export default function CustomerForecastPage() {
     }
   }, [fetchData]);
 
+  // 기간 변경 핸들러
+  const handlePeriodChange = React.useCallback((range: { from?: Date; to?: Date }) => {
+    setPeriodDateRange(range);
+  }, []);
+
+  // 날짜 범위에 따른 데이터 필터링
+  const filterDataByDateRange = React.useCallback((forecasts: ChartForecastType[], actualSales: ChartActualSalesType[]) => {
+    if (!periodDateRange?.from) return { forecasts, actualSales };
+    
+    const fromTime = periodDateRange.from.getTime();
+    const toTime = periodDateRange.to ? periodDateRange.to.getTime() : Date.now();
+    
+    const filteredForecasts = forecasts.filter(f => {
+      const date = new Date(f.predictedDate).getTime();
+      return !isNaN(date) && date >= fromTime && date <= toTime;
+    });
+    
+    const filteredActualSales = actualSales.filter(s => {
+      const date = new Date(s.date).getTime();
+      return !isNaN(date) && date >= fromTime && date <= toTime;
+    });
+    
+    return { forecasts: filteredForecasts, actualSales: filteredActualSales };
+  }, [periodDateRange]);
+
   // 규모별 필터링된 회사 목록
   const filteredCompanies = React.useMemo<ApiCustomerForecastResponse[]>(() => {
     if (sizeFilter === "all") {
@@ -133,8 +159,11 @@ export default function CustomerForecastPage() {
   React.useEffect(() => {
     if (chartType === "size") {
       setSelectedCompanyId("all");
+    } else {
+      // 회사별 탭으로 전환 시에도 전체 회사를 디폴트로 선택
+      setSelectedCompanyId("all");
     }
-  }, [chartType]);
+  }, [chartType, allForecastData]);
 
   // 선택된 회사명 계산
   const selectedCompanyName = React.useMemo(() => {
@@ -220,8 +249,15 @@ export default function CustomerForecastPage() {
       }
     }
     
-    return { forecasts: forecastsToDisplay, actualSales: actualSalesToDisplay, mape: mapeValue };
-  }, [selectedCompanyId, filteredCompanies, allForecastData, chartType]);
+    // 날짜 범위 필터링 적용
+    const filtered = filterDataByDateRange(forecastsToDisplay, actualSalesToDisplay);
+    
+    return { 
+      forecasts: filtered.forecasts, 
+      actualSales: filtered.actualSales, 
+      mape: mapeValue 
+    };
+  }, [selectedCompanyId, filteredCompanies, allForecastData, chartType, filterDataByDateRange]);
 
   // 테이블에 표시할 데이터 계산
   const tableData = React.useMemo<Forecast[]>(() => {
@@ -318,6 +354,7 @@ export default function CustomerForecastPage() {
             onSizeFilterChange={setSizeFilter}
             chartType={chartType}
             onChartTypeChange={setChartType}
+            onPeriodChange={handlePeriodChange}
           />
           <DataTable 
             data={tableData} 

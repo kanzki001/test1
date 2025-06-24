@@ -128,13 +128,40 @@ export function ForecastChart({
 
   const combinedChartData = React.useMemo(() => {
     const dataMap = new Map();
+    
+    // 기간이 설정되어 있으면 해당 기간의 모든 월을 먼저 생성
+    if (dateRange?.from && dateRange?.to) {
+      const start = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), 1);
+      const end = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), 1);
+      
+      for (let current = new Date(start); current <= end; current.setMonth(current.getMonth() + 1)) {
+        const monthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-01`;
+        dataMap.set(monthKey, {
+          predictedQuantity: 0,
+          actualSalesMonthly: 0
+        });
+      }
+    }
+    
+    // 예측 데이터 추가
     forecastData.forEach(item => {
       const dateKey = new Date(item.predictedDate.split('T')[0]).toISOString().split('T')[0];
-      dataMap.set(dateKey, { ...dataMap.get(dateKey), predictedQuantity: Number(item.predictedQuantity) });
+      const existing = dataMap.get(dateKey) || { predictedQuantity: 0, actualSalesMonthly: 0 };
+      dataMap.set(dateKey, { 
+        ...existing, 
+        predictedQuantity: Number(item.predictedQuantity || 0)
+      });
     });
+    
+    // 실제 매출 데이터 추가
     monthlyActualSales.forEach(item => {
-      dataMap.set(item.date, { ...dataMap.get(item.date), actualSalesMonthly: Number(item.quantity) });
+      const existing = dataMap.get(item.date) || { predictedQuantity: 0, actualSalesMonthly: 0 };
+      dataMap.set(item.date, { 
+        ...existing, 
+        actualSalesMonthly: Number(item.quantity || 0) 
+      });
     });
+    
     return Array.from(dataMap.entries())
       .map(([date, values]) => ({
         date,
@@ -142,7 +169,7 @@ export function ForecastChart({
         actualSalesMonthly: showActual ? Number(values.actualSalesMonthly || 0) : 0,
       }))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [forecastData, monthlyActualSales, showForecast, showActual]);
+  }, [forecastData, monthlyActualSales, showForecast, showActual, dateRange]);
 
   const filteredChartData = React.useMemo(() => {
     if (!dateRange?.from) return combinedChartData;
@@ -155,16 +182,37 @@ export function ForecastChart({
   }, [combinedChartData, dateRange]);
 
   const stats = React.useMemo(() => {
+    // 선택된 기간 내의 데이터만 사용
     const totalPredicted = filteredChartData.reduce((sum, item) => sum + (item.predictedQuantity || 0), 0);
     const totalActual = filteredChartData.reduce((sum, item) => sum + (item.actualSalesMonthly || 0), 0);
-    const monthCount = filteredChartData.length || 1;
-    const avgPredicted = Math.floor(totalPredicted / monthCount);
-    const avgActual = Math.floor(totalActual / monthCount);
+    
+    // 선택된 기간에 따른 개월 수 계산
+    let targetMonths = filteredChartData.length || 1;
+    if (period !== "all") {
+      targetMonths = parseInt(period.replace('months', ''));
+    }
+    
+    // 실제 매출: 선택된 기간 내 실제 데이터가 있는 개월 수
+    const actualDataCount = filteredChartData.filter(item => 
+      item.actualSalesMonthly !== undefined && item.actualSalesMonthly !== null
+    ).length || 1;
+    
+    // 예측 매출: 선택된 기간 내 예측 데이터가 0보다 큰 개월 수 (실제 예측이 있는 월만)
+    const predictedDataCount = filteredChartData.filter(item => 
+      item.predictedQuantity !== undefined && item.predictedQuantity !== null && item.predictedQuantity > 0
+    ).length || 1;
+    
+    // 핵심: 선택한 기간과 실제 존재하는 데이터 개월 수 중 작은 값으로 나누기
+    const actualMonthsForAvg = period === "all" ? actualDataCount : Math.min(targetMonths, actualDataCount);
+    const predictedMonthsForAvg = period === "all" ? predictedDataCount : Math.min(targetMonths, predictedDataCount);
+    
+    const avgPredicted = Math.floor(totalPredicted / predictedMonthsForAvg);
+    const avgActual = Math.floor(totalActual / actualMonthsForAvg);
     const validData = filteredChartData.filter(item => (item.predictedQuantity || 0) > 0);
     const trend = validData.length > 1 ? 
       ((validData[validData.length - 1].predictedQuantity - validData[0].predictedQuantity) / validData[0].predictedQuantity) * 100 : 0;
     return { avgPredicted, avgActual, mapeValue, trend };
-  }, [filteredChartData, mapeValue]);
+  }, [filteredChartData, mapeValue, period]);
 
   const handlePeriodChange = (value: string) => {
     setPeriod(value);
@@ -386,7 +434,11 @@ export function ForecastChart({
             ) : (
               /* 회사별 선택 */
               <div className="w-full sm:w-auto">
-                <CompanySearchCombobox companies={allCompanies} value={selectedCompanyId} onSelect={onCompanyChange} />
+                <CompanySearchCombobox 
+                  companies={allCompanies} 
+                  value={selectedCompanyId} 
+                  onSelect={onCompanyChange} 
+                />
               </div>
             )}
 

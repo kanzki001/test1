@@ -148,29 +148,68 @@ export async function GET() {
         }
     });
 
+    // ✨ 수정된 부분: 첫 매출부터 오늘까지 모든 날짜 포함 (0 포함)
     customerMap.forEach(customerData => {
         const customerId = customerData.customerId;
         const dailySalesForCustomer = actualSalesMap.get(customerId);
-        if (dailySalesForCustomer) {
-            customerData.actualSales = Array.from(dailySalesForCustomer.entries()).map(([date, quantity]) => ({
-                date: date,
-                quantity: quantity,
-            })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        
+        if (dailySalesForCustomer && dailySalesForCustomer.size > 0) {
+            // 첫 매출 날짜와 오늘 날짜 설정
+            const dates = Array.from(dailySalesForCustomer.keys()).sort();
+            const startDate = new Date(dates[0]);
+            const today = new Date();
+            
+            // 첫 매출부터 오늘까지 모든 날짜 생성
+            const allSalesData = [];
+            for (let date = new Date(startDate); date <= today; date.setDate(date.getDate() + 1)) {
+                const dateStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+                allSalesData.push({
+                    date: dateStr,
+                    quantity: dailySalesForCustomer.get(dateStr) || 0  // 매출 없으면 0
+                });
+            }
+            
+            customerData.actualSales = allSalesData;
         }
     });
 
     const customerForecastResponses: CustomerForecastResponse[] = Array.from(customerMap.values());
     
-    // 최종 응답 데이터 정렬
-    customerForecastResponses.sort((a, b) => {
-        const orderA = a.companySize ? sizeOrder[a.companySize] : Infinity;
-        const orderB = b.companySize ? sizeOrder[b.companySize] : Infinity;
+    // 각 회사의 총 매출 계산 (정렬용)
+    customerForecastResponses.forEach(customer => {
+        const totalSales = customer.actualSales.reduce((sum, sale) => sum + sale.quantity, 0);
+        (customer as any).totalSales = totalSales;
+    });
 
-        if (orderA !== orderB) {
-            return orderA - orderB;
+    // 매출 기준 상위 5개 회사 식별
+    const topCompanies = [...customerForecastResponses]
+        .sort((a, b) => ((b as any).totalSales || 0) - ((a as any).totalSales || 0))
+        .slice(0, 5)
+        .map(c => c.customerId);
+
+    // 최종 응답 데이터 정렬: 주요 고객(매출순) + 기타 회사(abc순)
+    customerForecastResponses.sort((a, b) => {
+        const aIsTop = topCompanies.includes(a.customerId);
+        const bIsTop = topCompanies.includes(b.customerId);
+
+        // 둘 다 주요 고객이면 매출순
+        if (aIsTop && bIsTop) {
+            return ((b as any).totalSales || 0) - ((a as any).totalSales || 0);
         }
 
-        return (a.companyName || '').localeCompare(b.companyName || '');
+        // 하나만 주요 고객이면 주요 고객이 먼저
+        if (aIsTop && !bIsTop) return -1;
+        if (!aIsTop && bIsTop) return 1;
+
+        // 둘 다 기타 회사면 abc순 (회사명 기준)
+        const nameA = (a.companyName || `Customer ${a.customerId}`).toLowerCase();
+        const nameB = (b.companyName || `Customer ${b.customerId}`).toLowerCase();
+        return nameA.localeCompare(nameB);
+    });
+
+    // totalSales 속성 제거 (응답에서 불필요)
+    customerForecastResponses.forEach(customer => {
+        delete (customer as any).totalSales;
     });
 
     return NextResponse.json(customerForecastResponses);
